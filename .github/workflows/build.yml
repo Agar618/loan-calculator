@@ -25,7 +25,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed loan_app.py
+          pyinstaller --onefile --windowed --name "Зээлийн тооцоолуур" loan_app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
