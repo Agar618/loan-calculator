@@ -25,10 +25,10 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --name "Зээлийн тооцоолуур" loan_app.py
+          pyinstaller --onefile --windowed --name "Тооцоолуур" loan_app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Зээлийн Тооцоолуур-Windows
-          path: dist/Зээлийн тооцоолуур.exe
+          name: Calculator-Windows
+          path: dist/Тооцоолуур.exe
