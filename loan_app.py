@@ -2,11 +2,39 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-
+# -------- Payment Storage --------
+payments = []
+# ---------------------------------
 # ------------------ Helpers ------------------
+def get_first_payment_date():
+    start_date = datetime.strptime(entry_start.get(), "%Y-%m-%d")
+    payday = int(payday_var.get())
 
+    # Step 1: same month candidate
+    candidate = start_date.replace(day=payday)
+
+    # Step 2: if already passed → next month
+    if candidate <= start_date:
+        candidate += relativedelta(months=1)
+
+    # Step 3: check gap rule
+    gap = (candidate - start_date).days
+
+    if gap < 15:
+        candidate += relativedelta(months=1)
+
+    return candidate
 def mark_invalid(entry):
     entry.config(highlightthickness=2, highlightbackground="red")
+
+def calculate_first_payment():
+    try:
+        candidate = get_first_payment_date()
+        first_date_label.config(
+            text=f"Төлөлтийн өдөр: {candidate.strftime('%Y-%m-%d')}"
+        )
+    except:
+        first_date_label.config(text="Төлөлтийн өдөр: -")
 
 def clear_mark(entry):
     entry.config(highlightthickness=0)
@@ -82,17 +110,26 @@ def open_date_picker(entry):
     day.set(existing.day)
     month.set(existing.month)
     year.set(existing.year)
-    # -------------------------------------
 
     def set_date():
         entry.delete(0, tk.END)
-        entry.insert(0, f"{int(year.get()):04d}-{int(month.get()):02d}-{int(day.get()):02d}")
+        entry.insert(
+            0,
+            f"{int(year.get()):04d}-{int(month.get()):02d}-{int(day.get()):02d}"
+        )
         win.destroy()
+        calculate_first_payment()
 
-    tk.Button(win, text="Select", command=set_date).grid(row=2,column=0,columnspan=3,pady=10)
+    tk.Button(
+        win,
+        text="Select",
+        command=set_date
+    ).grid(row=2, column=0, columnspan=3, pady=10)
+    # -------------------------------------
+
 def apply_theme(mode):
 
-    entries = [entry_loan, entry_months, entry_rate, entry_start, entry_first]
+    entries = [entry_loan, entry_months, entry_rate, entry_start,]
     frames = [frame, btn_frame, table_frame]
 
     if mode == "dark":
@@ -119,7 +156,6 @@ def apply_theme(mode):
                 highlightthickness=1,
                 bd=0
     )
-
         tree.tag_configure("odd", background="#2b2b2b")
         tree.tag_configure("even", background="#353535")
 
@@ -150,6 +186,24 @@ def apply_theme(mode):
 
         tree.tag_configure("odd", background="white")
         tree.tag_configure("even", background="#eaeaea")
+
+def add_payment():
+    try:
+        amount = float(pay_amount.get().replace(",", ""))
+        date = datetime.strptime(pay_date.get(), "%Y-%m-%d")
+    except:
+        messagebox.showerror("Error","Invalid payment input")
+        return
+
+    payments.append((date, amount))
+
+    payment_table.insert("", "end", values=(
+        date.strftime("%Y-%m-%d"),
+        f"{amount:,.2f}"
+    ))
+
+    pay_amount.delete(0, tk.END)
+
 # ------------------ Main Logic ------------------
 
 def generate_schedule():
@@ -157,7 +211,7 @@ def generate_schedule():
     for row in tree.get_children():
         tree.delete(row)
 
-    entries = [entry_loan, entry_months, entry_rate, entry_start, entry_first]
+    entries = [entry_loan, entry_months, entry_rate, entry_start,]
     for e in entries:
         clear_mark(e)
 
@@ -185,17 +239,13 @@ def generate_schedule():
 
     try:
         start_date = datetime.strptime(entry_start.get(), "%Y-%m-%d")
+        pay_date = get_first_payment_date()
+        first_date_label.config(text=pay_date.strftime("%Y-%m-%d"))
     except:
         mark_invalid(entry_start)
         messagebox.showerror("Input Error", "Эхлэх огноо буруу байна.")
         return
 
-    try:
-        pay_date = datetime.strptime(entry_first.get(), "%Y-%m-%d")
-    except:
-        mark_invalid(entry_first)
-        messagebox.showerror("Input Error", "Төлөх өдөр буруу байна.")
-        return
 
     balance = loan
     coef = 0
@@ -228,7 +278,14 @@ def generate_schedule():
         interest = balance * (rate * 12 / 365 * days)
         principal = payment - interest
 
-        tag = "even" if i % 2 == 0 else "odd"
+        today = datetime.today()
+
+        if current_date < today and balance > 0:
+            tag = "late"
+        elif current_date >= today and i==0:
+            tag = "next"
+        else:
+            tag = "even" if i % 2 == 0 else "odd"
         
         tree.insert("", "end", values=(
             i+1,
@@ -238,7 +295,7 @@ def generate_schedule():
             f"{interest:,.2f}",
             f"{principal:,.2f}",
             f"{balance:,.2f}"
-        ), tags=tag,)
+        ), tags=(tag, "money"))
 
         balance -= principal
         current_date += relativedelta(months=1)
@@ -254,6 +311,7 @@ def toggle_theme():
 root = tk.Tk()
 root.configure(bg="white")
 style = ttk.Style()
+style.configure("TCombobox", padding=1)
 style.theme_use("clam")  # better for custom styling
 
 
@@ -261,47 +319,85 @@ style.map("Treeview",
     background=[("selected", "#4a6984")],
     foreground=[("selected", "white")]
 )
-root.geometry("610x500")
+root.geometry("620x500")
 root.minsize(500,400)
 root.title("Зээлийн хуваарь тооцоолох")
 
 frame = tk.Frame(root)
 frame.pack(pady=10)
+frame.grid_rowconfigure(5, minsize=10)
+frame.grid_columnconfigure(1, weight=1)
 
-ttk.Label(frame, text="Зээлийн дүн").grid(row=0, column=0)
+ttk.Label(frame, text="Зээлийн дүн").grid(row=0, column=0, sticky="w", padx=8, pady=6)
 entry_loan = tk.Entry(frame)
-entry_loan.grid(row=0, column=1)
+entry_loan.grid(row=0, column=1, sticky="ew", padx=8, pady=6)
 entry_loan.bind("<KeyRelease>", format_currency)
 
-ttk.Label(frame, text="Авсан сар").grid(row=1, column=0)
+ttk.Label(frame, text="Авсан сар").grid(row=1, column=0, sticky="w", padx=8, pady=6)
 entry_months = tk.Entry(frame)
-entry_months.grid(row=1, column=1)
+entry_months.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
 
-ttk.Label(frame, text="Сарын хүү").grid(row=2, column=0)
+ttk.Label(frame, text="Сарын хүү").grid(row=2, column=0, sticky="w", padx=8, pady=6)
 entry_rate = tk.Entry(frame)
 entry_rate.bind("<KeyRelease>", format_percent_live)
-entry_rate.grid(row=2, column=1)
+entry_rate.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
 
-ttk.Label(frame, text="Авсан өдөр YYYY-MM-DD").grid(row=3, column=0)
+ttk.Label(frame, text="Авсан өдөр YYYY-MM-DD").grid(row=3, column=0, sticky="w", padx=8, pady=6)
 entry_start = tk.Entry(frame)
-entry_start.grid(row=3, column=1)
+entry_start.grid(row=3, column=1, sticky="ew", padx=8, pady=6)
 entry_start.bind("<Button-1>", lambda e: open_date_picker(entry_start))
 
-ttk.Label(frame, text="Төлж эхлэх өдөр YYYY-MM-DD").grid(row=4, column=0)
-entry_first = tk.Entry(frame)
-entry_first.grid(row=4, column=1)
-entry_first.bind("<Button-1>", lambda e: open_date_picker(entry_first))
+ttk.Label(frame, text="Төлөлтийн өдөр").grid(row=4, column=0, sticky="w", padx=8, pady=6)
+payday_var = tk.StringVar(value="1")
 
+payday_dropdown = ttk.Combobox(
+    frame,
+    textvariable=payday_var,
+    values=["1","5","10","15","20","25"],
+    state="readonly"
+)
+payday_dropdown.grid(row=4, column=1, sticky="ew", padx=8, pady=6)
+
+first_date_label = ttk.Label(frame, text="Төлөлтийн өдөр: -")
+first_date_label.grid(row=5, column=1, sticky="w", padx=8, pady=4)
 today = datetime.today().strftime("%Y-%m-%d")
 entry_start.insert(0, today)
-entry_first.insert(0, today)
-
+entry_start.bind("<KeyRelease>", lambda e: calculate_first_payment())
+payday_dropdown.bind("<<ComboboxSelected>>", lambda e: calculate_first_payment())
 btn_frame = tk.Frame(root)
 btn_frame.pack(pady=5)
+
+# ---------- Payment Panel ----------
+pay_frame = tk.Frame(root)
+pay_frame.pack(pady=5)
+
+#tk.Label(pay_frame, text="Payment Amount").grid(row=0, column=0, padx=5)
+#pay_amount = tk.Entry(pay_frame, width=12)
+#pay_amount.grid(row=0, column=1)
+
+#pay_date = tk.Entry(pay_frame, width=12)
+#pay_date.grid(row=0, column=3)
+
+#pay_date.insert(0, datetime.today().strftime("%Y-%m-%d"))
+#pay_date.bind("<Button-1>", lambda e: open_date_picker(pay_date))
+
+#tk.Button(pay_frame, text="Add Payment", command=lambda: add_payment()).grid(row=0, column=4, padx=5)
+# ----------------------------------
 
 ttk.Button(btn_frame, text="Тооцоолох", command=generate_schedule).pack(side="left", padx=5)
 ttk.Button(btn_frame, text="🌙 / ☀", command=toggle_theme).pack(side="left", padx=5)
 
+# -------- Payment List --------
+#payment_table = ttk.Treeview(root, columns=("Date","Amount"), show="headings", height=4)
+#payment_table.heading("Date", text="Date")
+#payment_table.heading("Amount", text="Amount")
+
+#payment_table.column("Date", anchor="center", width=120)
+#payment_table.column("Amount", anchor="e", width=120)
+
+#payment_table.pack(pady=5)
+
+# ------------------------------
 # ----- Table Container with Visible Scrollbar -----
 
 table_frame = tk.Frame(root)
@@ -313,12 +409,20 @@ scrollbar.pack(side="right", fill="y")
 columns = ("№", "Төлөх огноо", "Хоног", "Төлөх дүн", "Хүү", "Үндсэн", "Үлдэгдэл")
 
 tree = ttk.Treeview(table_frame, columns=columns, show="headings", yscrollcommand=scrollbar.set)
+# ---------- Row Styles ----------
+tree.tag_configure("late", background="#5a1a1a", foreground="white")
+tree.tag_configure("next", background="#1f3a5f")
+# --------------------------------
 tree.tag_configure("odd", background="#2b2b2b")
 tree.tag_configure("even", background="#353535")
 
 for col in columns:
     tree.heading(col, text=col)
-    tree.column(col, anchor="center", stretch=True)
+
+    if col in ("Төлөх дүн", "Хүү", "Үндсэн", "Үлдэгдэл"):
+        tree.column(col, anchor="e", stretch=True)   # right align money
+    else:
+        tree.column(col, anchor="center", stretch=True)
 
 tree.pack(side="left", expand=True, fill="both")
 
@@ -332,5 +436,5 @@ tree.bind("<Configure>", resize_columns)
 scrollbar.config(command=tree.yview)
 
 apply_theme("dark")
-
+calculate_first_payment()
 root.mainloop()
